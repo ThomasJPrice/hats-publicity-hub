@@ -2,6 +2,7 @@ import Link from "next/link";
 import { completeTaskAction, shiftTaskAction } from "@/app/actions";
 import type { Task } from "@/lib/db/schema";
 import { formatDay } from "@/lib/dates";
+import { ArchiveButton } from "./archive-button";
 import { Badge, CategoryBadge, PriorityMark } from "./ui";
 
 function ShiftButton({ id, days, label }: { id: string; days: number; label: string }) {
@@ -14,11 +15,12 @@ function ShiftButton({ id, days, label }: { id: string; days: number; label: str
   );
 }
 
-export function TaskRow({ task, today, actions = true }: { task: Task; today: string; actions?: boolean }) {
+export function TaskRow({ task, today, actions = true, back = "/tasks" }: { task: Task; today: string; actions?: boolean; back?: string }) {
+  const archived = task.archivedAt !== null;
   const done = task.status === "done";
-  const overdue = !done && task.dueDate !== null && task.dueDate < today;
+  const overdue = !done && !archived && task.dueDate !== null && task.dueDate < today;
   return (
-    <li className="card">
+    <li className={`card ${archived ? "opacity-60" : ""}`}>
       <div className="flex items-start justify-between gap-2">
         <Link href={`/tasks/${task.id}`} className={`text-sm font-medium ${done ? "text-stone-400 line-through" : ""}`}>
           {task.title}
@@ -33,8 +35,14 @@ export function TaskRow({ task, today, actions = true }: { task: Task; today: st
         <CategoryBadge category={task.category} />
         <PriorityMark priority={task.priority} />
         {task.status !== "todo" && <Badge>{task.status}</Badge>}
+        {archived && <Badge className="bg-stone-200 text-stone-700">Archived</Badge>}
       </div>
-      {actions && !done && (
+      {archived && (
+        <div className="mt-2">
+          <ArchiveButton entity="task" id={task.id} archived back={back} />
+        </div>
+      )}
+      {actions && !done && !archived && (
         <div className="mt-2 flex gap-2">
           <form action={completeTaskAction}>
             <input type="hidden" name="id" value={task.id} />

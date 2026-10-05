@@ -7,7 +7,7 @@ import { listTasks } from "@/lib/services/tasks";
 import { Empty, ErrorNote, oneOf, qs } from "@/components/ui";
 import { TaskRow } from "@/components/task-row";
 
-type Params = { category?: string; status?: string; error?: string };
+type Params = { category?: string; status?: string; archived?: string; error?: string };
 
 function groupByWeek(tasks: Task[], today: string) {
   const groups = new Map<string, { label: string; tasks: Task[] }>();
@@ -28,8 +28,10 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const sp = await searchParams;
   const category = oneOf(sp.category, TASK_CATEGORIES);
   const status = oneOf(sp.status, [...TASK_STATUSES, "open", "all"] as const) ?? "open";
+  const showArchived = sp.archived === "1";
+  const arch = showArchived ? "1" : undefined;
   const today = londonToday();
-  const tasks = await listTasks({ category, status: status === "all" ? undefined : status }, today);
+  const tasks = await listTasks({ category, status: status === "all" ? undefined : status, includeArchived: showArchived }, today);
   const groups = groupByWeek(tasks, today);
 
   const chip = (label: string, href: string, active: boolean) => (
@@ -65,13 +67,14 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
 
       <div className="-mx-4 mt-4 flex gap-2 overflow-x-auto px-4 pb-1">
         {(["open", ...TASK_STATUSES, "all"] as const).map((s) =>
-          chip(humanise(s), `/tasks${qs({ status: s === "open" ? undefined : s, category })}`, status === s),
+          chip(humanise(s), `/tasks${qs({ status: s === "open" ? undefined : s, category, archived: arch })}`, status === s),
         )}
       </div>
       <div className="-mx-4 mt-2 flex gap-2 overflow-x-auto px-4 pb-1">
-        {chip("All categories", `/tasks${qs({ status: status === "open" ? undefined : status })}`, !category)}
+        {chip(showArchived ? "Hide archived" : "Show archived", `/tasks${qs({ status: status === "open" ? undefined : status, category, archived: showArchived ? undefined : "1" })}`, showArchived)}
+        {chip("All categories", `/tasks${qs({ status: status === "open" ? undefined : status, archived: arch })}`, !category)}
         {TASK_CATEGORIES.map((c) =>
-          chip(humanise(c), `/tasks${qs({ status: status === "open" ? undefined : status, category: c })}`, category === c),
+          chip(humanise(c), `/tasks${qs({ status: status === "open" ? undefined : status, category: c, archived: arch })}`, category === c),
         )}
       </div>
 
@@ -85,7 +88,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
           <h2 className="h2">{g.label}</h2>
           <ul className="space-y-2">
             {g.tasks.map((t) => (
-              <TaskRow key={t.id} task={t} today={today} />
+              <TaskRow key={t.id} task={t} today={today} back={`/tasks${qs({ status: status === "open" ? undefined : status, category, archived: arch })}`} />
             ))}
           </ul>
         </section>

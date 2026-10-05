@@ -1,4 +1,4 @@
-import { CAMPAIGN, type PlacementType } from "@/lib/constants";
+import type { PlacementType } from "@/lib/constants";
 
 type Destination = {
   destinationUrl: string;
@@ -7,6 +7,9 @@ type Destination = {
   utmCampaign: string;
   utmContent: string;
 };
+
+/** Used only when the database can't be reached, and to seed show_settings on first run. */
+export const FALLBACK_DESTINATION_URL = "https://www.ticketsource.com/hats-drama";
 
 /** Destination with the link's UTM parameters merged in; any other existing query is preserved. */
 export function buildDestination(link: Destination): string {
@@ -23,11 +26,11 @@ export function buildDestination(link: Destination): string {
   return url.toString();
 }
 
-export function defaultUtm(placementType: PlacementType, slug: string) {
+export function defaultUtm(placementType: PlacementType, slug: string, campaign: string) {
   return {
     utmSource: placementType,
     utmMedium: "print",
-    utmCampaign: CAMPAIGN,
+    utmCampaign: campaign,
     utmContent: slug,
   };
 }
@@ -49,6 +52,7 @@ export function shortUrl(slug: string): string {
   return `${baseUrl()}/q/${slug}`;
 }
 
-export function defaultDestinationUrl(): string {
-  return process.env.DEFAULT_DESTINATION_URL || baseUrl() || "https://example.com";
+/** Env-level default destination: the first-run seed value, and the last-resort fallback. */
+export function envDefaultDestinationUrl(): string {
+  return process.env.DEFAULT_DESTINATION_URL || FALLBACK_DESTINATION_URL;
 }

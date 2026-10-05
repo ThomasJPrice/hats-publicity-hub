@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   CHANNELS,
+  KEY_DATE_KINDS,
   PILLARS,
   PLACEMENT_TYPES,
   POST_STATUSES,
@@ -10,6 +11,7 @@ import {
 } from "@/lib/constants";
 
 const ymd = z.iso.date();
+const instantIso = z.iso.datetime({ offset: true });
 const text = (max = 5000) => z.string().trim().max(max);
 
 export const httpsUrl = z
@@ -42,7 +44,7 @@ export const taskCreateSchema = z.object({
   status: taskFields.status.optional(),
   notes: taskFields.notes.optional(),
 });
-export const taskUpdateSchema = z.object(taskFields).partial();
+export const taskUpdateSchema = z.object({ ...taskFields, archived: z.boolean() }).partial();
 
 export type TaskCreate = z.infer<typeof taskCreateSchema>;
 export type TaskUpdate = z.infer<typeof taskUpdateSchema>;
@@ -70,7 +72,7 @@ export const postCreateSchema = z.object({
   status: postFields.status.optional(),
   notes: postFields.notes.optional(),
 });
-export const postUpdateSchema = z.object(postFields).partial();
+export const postUpdateSchema = z.object({ ...postFields, archived: z.boolean() }).partial();
 
 export type PostCreate = z.infer<typeof postCreateSchema>;
 export type PostUpdate = z.infer<typeof postUpdateSchema>;
@@ -100,8 +102,52 @@ export const qrUpdateSchema = z
     utmContent: utm,
     isActive: z.boolean(),
     notes: text(),
+    archived: z.boolean(),
   })
   .partial();
+
+const showFields = {
+  name: text(200).min(1),
+  utmCampaign: text(100).min(1),
+  defaultDestinationUrl: httpsUrl,
+};
+export const showSettingsSchema = z.object(showFields);
+export const showSettingsUpdateSchema = z.object(showFields).partial();
+export type ShowSettingsInput = z.infer<typeof showSettingsSchema>;
+
+const keyDateFields = {
+  label: text(200).min(1),
+  date: ymd,
+  endDate: ymd.nullable(),
+  kind: z.enum(KEY_DATE_KINDS),
+  isProposed: z.boolean(),
+  notes: text(),
+};
+export const keyDateCreateSchema = z.object({
+  label: keyDateFields.label,
+  date: keyDateFields.date,
+  endDate: keyDateFields.endDate.optional(),
+  kind: keyDateFields.kind.optional(),
+  isProposed: keyDateFields.isProposed.optional(),
+  notes: keyDateFields.notes.optional(),
+});
+export const keyDateUpdateSchema = z.object({ ...keyDateFields, archived: z.boolean() }).partial();
+export type KeyDateCreate = z.infer<typeof keyDateCreateSchema>;
+export type KeyDateUpdate = z.infer<typeof keyDateUpdateSchema>;
+
+const performanceFields = {
+  startsAt: instantIso,
+  label: text(200).nullable(),
+  notes: text(),
+};
+export const performanceCreateSchema = z.object({
+  startsAt: performanceFields.startsAt,
+  label: performanceFields.label.optional(),
+  notes: performanceFields.notes.optional(),
+});
+export const performanceUpdateSchema = z.object({ ...performanceFields, archived: z.boolean() }).partial();
+export type PerformanceCreate = z.infer<typeof performanceCreateSchema>;
+export type PerformanceUpdate = z.infer<typeof performanceUpdateSchema>;
 
 export type QrCreate = z.infer<typeof qrCreateSchema>;
 export type QrUpdate = z.infer<typeof qrUpdateSchema>;

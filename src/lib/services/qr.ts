@@ -1,11 +1,13 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { desc, eq, isNull, sql } from "drizzle-orm";
 import type { DeviceClass, PlacementType, Source } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { qrLinks, qrScans, type QrLink } from "@/lib/db/schema";
 import { addDays, londonToday } from "@/lib/dates";
-import { defaultUtm, defaultDestinationUrl, shortUrl, slugify } from "@/lib/qr-url";
+import { defaultUtm, shortUrl, slugify } from "@/lib/qr-url";
 import type { QrCreate, QrUpdate } from "@/lib/schemas";
 import { logActivity } from "./activity";
+import { archivePatch, changeSummary } from "./archive";
+import { getShowSettings } from "./show";
 
 export async function findLinkBySlug(slug: string): Promise<QrLink | null> {
   const [row] = await db().select().from(qrLinks).where(eq(qrLinks.slug, slug)).limit(1);
@@ -26,14 +28,15 @@ export async function createQrLink(input: QrCreate, source: Source): Promise<QrL
   const slug = input.slug ?? slugify(input.label);
   if (slug.length < 2) throw new Error("Could not make a slug from that label; please supply one");
   if (await findLinkBySlug(slug)) throw new Error(`The slug "${slug}" is already in use`);
-  const utm = defaultUtm(input.placementType, slug);
+  const settings = await getShowSettings();
+  const utm = defaultUtm(input.placementType, slug, settings.utmCampaign);
   const [row] = await db()
     .insert(qrLinks)
     .values({
       slug,
       label: input.label,
       placementType: input.placementType,
-      destinationUrl: input.destinationUrl ?? defaultDestinationUrl(),
+      destinationUrl: input.destinationUrl ?? settings.defaultDestinationUrl,
       utmSource: input.utmSource ?? utm.utmSource,
       utmMedium: input.utmMedium ?? utm.utmMedium,
       utmCampaign: input.utmCampaign ?? utm.utmCampaign,
@@ -49,12 +52,17 @@ export async function createQrLink(input: QrCreate, source: Source): Promise<QrL
 export async function updateQrLink(id: string, input: QrUpdate, source: Source): Promise<QrLink> {
   const existing = await getLink(id);
   if (!existing) throw new Error(`QR link ${id} not found`);
-  const [row] = await db().update(qrLinks).set(input).where(eq(qrLinks.id, id)).returning();
+  const { archived, ...fields } = input;
+  const [row] = await db()
+    .update(qrLinks)
+    .set({ ...fields, ...archivePatch(archived) })
+    .where(eq(qrLinks.id, id))
+    .returning();
   const repointed =
     input.destinationUrl && input.destinationUrl !== existing.destinationUrl
       ? `; destination ${existing.destinationUrl} -> ${input.destinationUrl}`
       : "";
-  await logActivity(source, "qr_link", id, `Updated QR link ${row.slug} (${Object.keys(input).join(", ")})${repointed}`);
+  await logActivity(source, "qr_link", id, `${changeSummary("Updated", "QR link", row.slug, input)}${repointed}`);
   return row;
 }
 
@@ -77,13 +85,17 @@ export type QrOverview = {
 const num = (v: unknown) => Number(v ?? 0);
 
 /** Scan stats per link over the last `days` London days (including today). Bots excluded. */
-export async function getQrOverview(days = 14, today = londonToday()): Promise<QrOverview> {
+export async function getQrOverview(days = 14, today = londonToday(), includeArchived = false): Promise<QrOverview> {
   const periodStart = addDays(today, -(days - 1));
   const last7Start = addDays(today, -6);
   const day = sql<string>`to_char(${qrScans.scannedAt} at time zone 'Europe/London', 'YYYY-MM-DD')`;
 
   const [links, totals, dailyRows] = await Promise.all([
-    db().select().from(qrLinks).orderBy(desc(qrLinks.createdAt)),
+    db()
+      .select()
+      .from(qrLinks)
+      .where(includeArchived ? undefined : isNull(qrLinks.archivedAt))
+      .orderBy(desc(qrLinks.createdAt)),
     db()
       .select({
         linkId: qrScans.linkId,

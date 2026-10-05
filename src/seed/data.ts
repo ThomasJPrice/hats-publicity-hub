@@ -1,4 +1,34 @@
-import type { Channel, PlacementType, Pillar, TaskCategory, TaskPriority } from "@/lib/constants";
+import type { Channel, KeyDateKind, PlacementType, Pillar, TaskCategory, TaskPriority } from "@/lib/constants";
+
+export const SEED_SHOW = {
+  name: "HATS Panto 2027: The Wizard of Oz",
+  utmCampaign: "wizard-of-oz-2027",
+  defaultDestinationUrl: "https://www.ticketsource.com/hats-drama",
+};
+
+type SeedKeyDate = { label: string; date: string; kind: KeyDateKind; isProposed?: boolean };
+
+export const SEED_KEY_DATES: SeedKeyDate[] = [
+  { label: "Readthrough", date: "2026-10-07", kind: "milestone" },
+  { label: "Auditions, night 1", date: "2026-10-14", kind: "audition", isProposed: true },
+  { label: "Auditions, night 2", date: "2026-10-21", kind: "audition", isProposed: true },
+  { label: "Rehearsals begin (every Wednesday and Sunday)", date: "2026-10-28", kind: "rehearsal" },
+  { label: "Mailing-list pre-sale opens", date: "2026-11-09", kind: "sales", isProposed: true },
+  { label: "General sale opens", date: "2026-11-16", kind: "sales", isProposed: true },
+  { label: "Tech rehearsal", date: "2027-01-03", kind: "tech" },
+  { label: "Tech rehearsal", date: "2027-01-17", kind: "tech" },
+];
+
+/** London wall-clock "yyyy-MM-ddTHH:mm". */
+export const SEED_PERFORMANCES = [
+  "2027-01-22T19:30",
+  "2027-01-23T14:30",
+  "2027-01-23T19:30",
+  "2027-01-24T14:30",
+  "2027-01-29T19:30",
+  "2027-01-30T14:30",
+  "2027-01-30T19:30",
+];
 
 type SeedTask = [title: string, category: TaskCategory, due: string, priority: TaskPriority];
 

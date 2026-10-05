@@ -1,8 +1,10 @@
+import Link from "next/link";
 import { createQrAction, updateQrAction } from "@/app/actions";
+import { ArchiveButton } from "@/components/archive-button";
 import { PLACEMENT_TYPES, humanise } from "@/lib/constants";
 import { formatDay, formatInstant } from "@/lib/dates";
-import { defaultDestinationUrl } from "@/lib/qr-url";
 import { getQrOverview, type QrLinkStats } from "@/lib/services/qr";
+import { getShowSettings } from "@/lib/services/show";
 import { Badge, Empty, ErrorNote } from "@/components/ui";
 import { SlugField } from "@/components/slug-field";
 
@@ -22,10 +24,11 @@ function DailyChart({ daily }: { daily: QrLinkStats["daily"] }) {
   );
 }
 
-function LinkCard({ link }: { link: QrLinkStats }) {
+function LinkCard({ link, back }: { link: QrLinkStats; back: string }) {
   const base = `/api/qr/${link.slug}`;
+  const archived = link.archivedAt !== null;
   return (
-    <li className="card">
+    <li className={`card ${archived ? "opacity-70" : ""}`}>
       <div className="flex gap-3">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={`${base}?format=svg`} alt={`QR code for ${link.label}`} width={96} height={96} className="size-24 shrink-0 rounded border border-stone-200" />
@@ -33,6 +36,7 @@ function LinkCard({ link }: { link: QrLinkStats }) {
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-sm font-medium">{link.label}</span>
             {!link.isActive && <Badge className="bg-red-100 text-red-800">Inactive</Badge>}
+            {archived && <Badge className="bg-stone-200 text-stone-700">Archived</Badge>}
           </div>
           <p className="text-xs text-stone-500">{humanise(link.placementType)}</p>
           <p className="mt-1 break-all font-mono text-xs">{link.shortUrl}</p>
@@ -61,8 +65,18 @@ function LinkCard({ link }: { link: QrLinkStats }) {
         <form action={updateQrAction} className="mt-2 space-y-2">
           <input type="hidden" name="id" value={link.id} />
           <div>
+            <label className="label">Slug (read-only: it is printed on posters)</label>
+            <input value={link.slug} readOnly disabled className="input bg-stone-100 font-mono" />
+          </div>
+          <div>
             <label className="label">Label</label>
             <input name="label" defaultValue={link.label} required className="input" />
+          </div>
+          <div>
+            <label className="label">Placement</label>
+            <select name="placementType" defaultValue={link.placementType} className="input">
+              {PLACEMENT_TYPES.map((p) => <option key={p} value={p}>{humanise(p)}</option>)}
+            </select>
           </div>
           <div>
             <label className="label">Destination (changing this repoints every printed code)</label>
@@ -75,25 +89,49 @@ function LinkCard({ link }: { link: QrLinkStats }) {
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" name="isActive" defaultChecked={link.isActive} className="size-4" /> Active
           </label>
-          <p className="text-[11px] text-stone-500">
-            UTM: source {link.utmSource || "-"}, medium {link.utmMedium || "-"}, campaign {link.utmCampaign || "-"}, content {link.utmContent || "-"}. The slug cannot change because it is printed.
-          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="label">utm_source</label>
+              <input name="utmSource" defaultValue={link.utmSource} className="input" />
+            </div>
+            <div>
+              <label className="label">utm_medium</label>
+              <input name="utmMedium" defaultValue={link.utmMedium} className="input" />
+            </div>
+            <div>
+              <label className="label">utm_campaign</label>
+              <input name="utmCampaign" defaultValue={link.utmCampaign} className="input" />
+            </div>
+            <div>
+              <label className="label">utm_content</label>
+              <input name="utmContent" defaultValue={link.utmContent} className="input" />
+            </div>
+          </div>
           <button className="btn btn-primary btn-sm">Save</button>
         </form>
+        <div className="mt-2">
+          <ArchiveButton entity="qr" id={link.id} archived={archived} back={back} />
+          {!archived && <p className="mt-1 text-[11px] text-stone-500">Archived links stop redirecting and send visitors to the default ticket page.</p>}
+        </div>
       </details>
     </li>
   );
 }
 
-export default async function QrPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  const { error } = await searchParams;
-  const overview = await getQrOverview(14);
+export default async function QrPage({ searchParams }: { searchParams: Promise<{ error?: string; archived?: string }> }) {
+  const { error, archived } = await searchParams;
+  const showArchived = archived === "1";
+  const back = showArchived ? "/qr?archived=1" : "/qr";
+  const [overview, settings] = await Promise.all([getQrOverview(14, undefined, showArchived), getShowSettings()]);
 
   return (
     <div>
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">QR tracking</h1>
-        <a href="/api/qr-export" className="btn btn-sm">Export CSV</a>
+        <div className="flex gap-2">
+          <Link href={showArchived ? "/qr" : "/qr?archived=1"} className="btn btn-sm">{showArchived ? "Hide archived" : "Show archived"}</Link>
+          <a href="/api/qr-export" className="btn btn-sm">Export CSV</a>
+        </div>
       </div>
       <ErrorNote message={error} />
 
@@ -102,7 +140,7 @@ export default async function QrPage({ searchParams }: { searchParams: Promise<{
         <ul className="mt-1 list-disc space-y-0.5 pl-4">
           <li>Print at least 2 cm square, and larger on banners (roughly 1 cm of code per 10 cm of scanning distance).</li>
           <li>Test with a phone before sending anything to print.</li>
-          <li>Print the short URL in text under the code.</li>
+          <li>Do not print the short URL under the code. Print a direct address for people who won&apos;t scan instead (the HATS website or the TicketSource page); visits from it are untracked.</li>
           <li>A scan is not a sale. Bot scans are stored but never counted.</li>
         </ul>
       </section>
@@ -122,7 +160,7 @@ export default async function QrPage({ searchParams }: { searchParams: Promise<{
         <SlugField />
         <div>
           <label className="label" htmlFor="destinationUrl">Destination</label>
-          <input id="destinationUrl" name="destinationUrl" type="url" defaultValue={defaultDestinationUrl()} className="input" />
+          <input id="destinationUrl" name="destinationUrl" type="url" defaultValue={settings.defaultDestinationUrl} className="input" />
         </div>
         <button className="btn btn-primary w-full">Create link</button>
       </form>
@@ -147,7 +185,7 @@ export default async function QrPage({ searchParams }: { searchParams: Promise<{
 
       <h2 className="h2">Links</h2>
       <ul className="space-y-3">
-        {overview.links.map((l) => <LinkCard key={l.id} link={l} />)}
+        {overview.links.map((l) => <LinkCard key={l.id} link={l} back={back} />)}
       </ul>
     </div>
   );

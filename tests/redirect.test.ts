@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const findLinkBySlug = vi.fn();
 const recordScan = vi.fn();
+const getShowSettings = vi.fn();
 vi.mock("@/lib/services/qr", () => ({
   findLinkBySlug: (...a: unknown[]) => findLinkBySlug(...a),
   recordScan: (...a: unknown[]) => recordScan(...a),
 }));
+vi.mock("@/lib/services/show", () => ({ getShowSettings: (...a: unknown[]) => getShowSettings(...a) }));
 
-import { resolveScan } from "@/lib/redirect";
+import { defaultDestination, resolveScan } from "@/lib/redirect";
 import { buildDestination } from "@/lib/qr-url";
 
 const DEFAULT = "https://tickets.example.com/event";
@@ -18,6 +20,7 @@ const link = {
   id: "link-1",
   slug: "a3-shops",
   isActive: true,
+  archivedAt: null,
   destinationUrl: "https://tickets.example.com/event",
   utmSource: "poster_a3",
   utmMedium: "print",
@@ -28,7 +31,9 @@ const link = {
 beforeEach(() => {
   findLinkBySlug.mockReset();
   recordScan.mockReset();
-  process.env.DEFAULT_DESTINATION_URL = DEFAULT;
+  getShowSettings.mockReset();
+  getShowSettings.mockResolvedValue({ defaultDestinationUrl: DEFAULT });
+  process.env.DEFAULT_DESTINATION_URL = "https://env.example.com/fallback";
 });
 
 describe("resolveScan", () => {
@@ -47,8 +52,15 @@ describe("resolveScan", () => {
     expect(recordScan).toHaveBeenCalledWith({ linkId: "link-1", deviceClass: "mobile", isBot: false });
   });
 
-  it("sends an inactive link to the default destination without logging", async () => {
+  it("sends an inactive link to the default destination (from show settings) without logging", async () => {
     findLinkBySlug.mockResolvedValue({ ...link, isActive: false });
+    const res = await resolveScan("a3-shops", MOBILE);
+    expect(res.location).toBe(DEFAULT);
+    expect(res.log).toBeUndefined();
+  });
+
+  it("treats an archived link like an inactive one", async () => {
+    findLinkBySlug.mockResolvedValue({ ...link, archivedAt: new Date() });
     const res = await resolveScan("a3-shops", MOBILE);
     expect(res.location).toBe(DEFAULT);
     expect(res.log).toBeUndefined();
@@ -61,10 +73,18 @@ describe("resolveScan", () => {
     expect(res.log).toBeUndefined();
   });
 
-  it("falls back to the default destination if the lookup fails", async () => {
+  it("uses the edited default destination, not a hard-coded one", async () => {
+    findLinkBySlug.mockResolvedValue(null);
+    getShowSettings.mockResolvedValue({ defaultDestinationUrl: "https://tickets.example.com/new-page" });
+    expect((await resolveScan("nope", MOBILE)).location).toBe("https://tickets.example.com/new-page");
+  });
+
+  it("falls back to the env default if the database can't be read at all", async () => {
     findLinkBySlug.mockRejectedValue(new Error("db down"));
+    getShowSettings.mockRejectedValue(new Error("db down"));
     const res = await resolveScan("a3-shops", MOBILE);
-    expect(res.location).toBe(DEFAULT);
+    expect(res.location).toBe("https://env.example.com/fallback");
+    expect(await defaultDestination()).toBe("https://env.example.com/fallback");
   });
 
   it("stores bot scans flagged as bots so counts can exclude them", async () => {

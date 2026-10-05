@@ -1,7 +1,7 @@
 import type { Channel, PostStatus, TaskCategory } from "@/lib/constants";
 import { eachDay, londonDateOf, londonTimeOf, type DateRange } from "@/lib/dates";
-import { KEY_DATES, PERFORMANCES } from "@/lib/show";
 import { listPostsInRange } from "./posts";
+import { listKeyDates, listPerformances } from "./show";
 import { listTasks } from "./tasks";
 
 export type CalendarItem = {
@@ -21,22 +21,36 @@ export type CalendarFilters = { channel?: Channel; postStatus?: PostStatus; cate
 export async function getCalendarItems(range: DateRange, filters: CalendarFilters = {}): Promise<CalendarItem[]> {
   const inRange = (d: string) => d >= range.start && d <= range.end;
   const items: CalendarItem[] = [];
-  // Show dates are always shown; filters only narrow posts and tasks.
-  for (const k of KEY_DATES) {
-    for (const date of eachDay(k.date, k.endDate ?? k.date)) {
-      if (inRange(date)) items.push({ date, kind: "key", title: k.label, meta: k.proposed ? "proposed" : undefined });
-    }
-  }
-  for (const p of PERFORMANCES) {
-    if (inRange(p.date)) items.push({ date: p.date, time: p.time, kind: "performance", title: "Performance" });
-  }
 
-  const [posts, tasks] = await Promise.all([
+  const [keyDates, performances, posts, tasks] = await Promise.all([
+    listKeyDates(),
+    listPerformances(),
     listPostsInRange(range, { channel: filters.channel, status: filters.postStatus }),
     listTasks({ dueAfter: range.start, category: filters.category }).then((rows) =>
       rows.filter((t) => t.dueDate && t.dueDate <= range.end),
     ),
   ]);
+
+  // Show dates are always shown; filters only narrow posts and tasks.
+  for (const k of keyDates) {
+    for (const date of eachDay(k.date, k.endDate ?? k.date)) {
+      if (inRange(date)) {
+        items.push({ date, kind: "key", title: k.label, href: "/show", meta: k.isProposed ? "proposed" : undefined });
+      }
+    }
+  }
+  for (const p of performances) {
+    const date = londonDateOf(p.startsAt);
+    if (inRange(date)) {
+      items.push({
+        date,
+        time: londonTimeOf(p.startsAt),
+        kind: "performance",
+        title: p.label ? `Performance: ${p.label}` : "Performance",
+        href: "/show",
+      });
+    }
+  }
   for (const p of posts) {
     if (!p.scheduledFor) continue;
     items.push({

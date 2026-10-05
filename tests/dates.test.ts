@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { addDays, instantRange, londonToday, weekRange } from "@/lib/dates";
-import { daysToOpeningNight, nextKeyDates } from "@/lib/show";
+import { daysToOpeningNight, nextKeyDates, openingNightOf } from "@/lib/show";
 import { bucketTasks } from "@/lib/task-buckets";
 
 describe("weekRange (Monday to Sunday)", () => {
@@ -68,15 +68,34 @@ describe("bucketTasks", () => {
   });
 });
 
-describe("show helpers", () => {
-  it("counts days to opening night", () => {
-    expect(daysToOpeningNight("2027-01-21")).toBe(1);
-    expect(daysToOpeningNight("2026-10-05")).toBe(109);
+describe("show helpers (derived from database rows)", () => {
+  const at = (iso: string) => ({ startsAt: new Date(iso) });
+
+  it("opening night is the earliest performance, as a London date", () => {
+    const perfs = [at("2027-01-23T19:30:00Z"), at("2027-01-22T19:30:00Z"), at("2027-01-29T19:30:00Z")];
+    expect(openingNightOf(perfs)).toBe("2027-01-22");
+    // 23:30 UTC in a BST month is already the next London day
+    expect(openingNightOf([at("2026-10-04T23:30:00Z")])).toBe("2026-10-05");
+  });
+  it("counts days to opening night and follows edits to the performances", () => {
+    const perfs = [at("2027-01-22T19:30:00Z"), at("2027-01-23T19:30:00Z")];
+    expect(daysToOpeningNight(perfs, "2027-01-21")).toBe(1);
+    expect(daysToOpeningNight(perfs, "2026-10-05")).toBe(109);
+    // Moving opening night earlier, or dropping it, changes the countdown.
+    expect(daysToOpeningNight([...perfs, at("2027-01-20T19:30:00Z")], "2027-01-18")).toBe(2);
+    expect(daysToOpeningNight(perfs.slice(1), "2027-01-21")).toBe(2);
+  });
+  it("has no countdown when there are no performances", () => {
+    expect(openingNightOf([])).toBeNull();
+    expect(daysToOpeningNight([], "2026-10-05")).toBeNull();
   });
   it("lists the next key dates, keeping an in-progress range", () => {
-    expect(nextKeyDates("2026-10-20", 2).map((k) => k.label)).toEqual([
-      "Auditions",
-      "Rehearsals begin (every Wednesday and Sunday)",
-    ]);
+    const keyDates = [
+      { label: "Rehearsals begin", date: "2026-10-28", endDate: null },
+      { label: "Auditions", date: "2026-10-14", endDate: "2026-10-25" },
+      { label: "Readthrough", date: "2026-10-07", endDate: null },
+    ];
+    expect(nextKeyDates(keyDates, "2026-10-20", 2).map((k) => k.label)).toEqual(["Auditions", "Rehearsals begin"]);
+    expect(nextKeyDates(keyDates, "2026-10-26").map((k) => k.label)).toEqual(["Rehearsals begin"]);
   });
 });

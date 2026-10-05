@@ -1,27 +1,31 @@
 import { londonToday, weekRange } from "@/lib/dates";
-import { daysToOpeningNight, nextKeyDates } from "@/lib/show";
+import { daysToOpeningNight, nextKeyDates, openingNightOf } from "@/lib/show";
 import { bucketTasks } from "@/lib/task-buckets";
 import { listPostsInRange } from "./posts";
 import { getQrOverview } from "./qr";
+import { listKeyDates, listPerformances } from "./show";
 import { listTasks } from "./tasks";
 
 export async function getStatusSummary(today = londonToday()) {
   const thisWeek = weekRange(today, 0);
   const nextWeek = weekRange(today, 1);
-  const [open, postsThisWeek, qr] = await Promise.all([
+  const [open, postsThisWeek, qr, keyDates, performances] = await Promise.all([
     listTasks({ status: "open" }, today),
     listPostsInRange(thisWeek),
     getQrOverview(7, today),
+    listKeyDates(),
+    listPerformances(),
   ]);
   const buckets = bucketTasks(open, today);
   return {
     today,
     thisWeekRange: thisWeek,
     nextWeekRange: nextWeek,
-    daysToOpeningNight: daysToOpeningNight(today),
+    openingNight: openingNightOf(performances),
+    daysToOpeningNight: daysToOpeningNight(performances, today),
     ...buckets,
     postsThisWeek,
-    nextKeyDates: nextKeyDates(today, 3),
+    nextKeyDates: nextKeyDates(keyDates, today, 3),
     topQrLinks: qr.links
       .filter((l) => l.last7Days > 0)
       .sort((a, b) => b.last7Days - a.last7Days)

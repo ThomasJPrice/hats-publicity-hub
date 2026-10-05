@@ -14,6 +14,7 @@ export const PLACEMENT_TYPES = [
   "noticeboard",
   "other",
 ] as const;
+export const KEY_DATE_KINDS = ["milestone", "audition", "rehearsal", "tech", "sales", "other"] as const;
 export const DEVICE_CLASSES = ["mobile", "tablet", "desktop", "unknown"] as const;
 export const SOURCES = ["web", "mcp"] as const;
 
@@ -24,10 +25,9 @@ export type Channel = (typeof CHANNELS)[number];
 export type Pillar = (typeof PILLARS)[number];
 export type PostStatus = (typeof POST_STATUSES)[number];
 export type PlacementType = (typeof PLACEMENT_TYPES)[number];
+export type KeyDateKind = (typeof KEY_DATE_KINDS)[number];
 export type DeviceClass = (typeof DEVICE_CLASSES)[number];
 export type Source = (typeof SOURCES)[number];
-
-export const CAMPAIGN = "wizard-of-oz-2027";
 
 /** "poster_a3" -> "Poster a3" */
 export function humanise(value: string): string {

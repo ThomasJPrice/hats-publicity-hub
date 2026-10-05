@@ -25,7 +25,7 @@ function TaskSection({ title, tasks, today, tone }: { title: string; tasks: Task
   );
 }
 
-export default async function HomePage() {
+export async function HomeContent() {
   const today = londonToday();
   const [s, activity] = await Promise.all([getStatusSummary(today), listActivity(undefined, 8)]);
 
@@ -63,11 +63,12 @@ export default async function HomePage() {
       <section>
         <h2 className="h2">Next key dates</h2>
         <ul className="space-y-2">
+          {s.nextKeyDates.length === 0 && <Empty>No upcoming key dates.</Empty>}
           {s.nextKeyDates.map((k) => (
             <li key={k.date + k.label} className="card flex items-center justify-between gap-2 text-sm">
               <span>{k.label}</span>
               <span className="flex shrink-0 items-center gap-1.5 text-xs text-stone-500">
-                {k.proposed && <Badge className="bg-amber-100 text-amber-800">proposed</Badge>}
+                {k.isProposed && <Badge className="bg-amber-100 text-amber-800">proposed</Badge>}
                 {formatDay(k.date)}
                 {k.endDate ? ` to ${formatDay(k.endDate)}` : ""}
               </span>

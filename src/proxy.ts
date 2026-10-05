@@ -1,8 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth";
 
-// Public: the login page, QR redirects (printed on paper) and the MCP endpoint (own bearer auth).
-const PUBLIC = [/^\/login$/, /^\/q\/[^/]+$/, /^\/api\/mcp$/];
+// Public: the login page, QR redirects (printed on paper), the MCP endpoint (own bearer auth),
+// and "/" which sends visitors without a session to the ticket page (the page itself checks the session).
+const PUBLIC = [/^\/$/, /^\/login$/, /^\/q\/[^/]+$/, /^\/api\/mcp$/];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

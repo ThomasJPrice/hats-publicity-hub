@@ -7,11 +7,24 @@ import { ZodError } from "zod";
 import { CHANNELS, type Channel } from "@/lib/constants";
 import { createSessionToken, requireSession, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth";
 import { londonWallClockToDate } from "@/lib/dates";
-import { postCreateSchema, postUpdateSchema, qrCreateSchema, qrUpdateSchema, taskCreateSchema, taskUpdateSchema } from "@/lib/schemas";
+import {
+  keyDateCreateSchema,
+  keyDateUpdateSchema,
+  performanceCreateSchema,
+  performanceUpdateSchema,
+  postCreateSchema,
+  postUpdateSchema,
+  qrCreateSchema,
+  qrUpdateSchema,
+  showSettingsUpdateSchema,
+  taskCreateSchema,
+  taskUpdateSchema,
+} from "@/lib/schemas";
 import { safeEqual } from "@/lib/safe-equal";
-import { archivePost, createPost, updatePost } from "@/lib/services/posts";
+import { createPost, updatePost } from "@/lib/services/posts";
 import { createQrLink, updateQrLink } from "@/lib/services/qr";
-import { archiveTask, completeTask, createTask, shiftTask, updateTask } from "@/lib/services/tasks";
+import { createKeyDate, createPerformance, updateKeyDate, updatePerformance, updateShowSettings } from "@/lib/services/show";
+import { completeTask, createTask, shiftTask, updateTask } from "@/lib/services/tasks";
 
 /** Blank form fields become undefined (or null where a field is clearable). */
 function str(fd: FormData, name: string): string | undefined {
@@ -55,6 +68,7 @@ export async function loginAction(formData: FormData) {
     await new Promise((r) => setTimeout(r, 600));
     redirect("/login?error=1");
   }
+  // Host-only cookie: no Domain attribute, so it isn't shared with the main HATS website.
   (await cookies()).set(SESSION_COOKIE, await createSessionToken(), sessionCookieOptions);
   redirect("/");
 }
@@ -62,6 +76,43 @@ export async function loginAction(formData: FormData) {
 export async function logoutAction() {
   (await cookies()).delete(SESSION_COOKIE);
   redirect("/login");
+}
+
+// ---------- archive / restore (one action for every entity; nothing is ever hard-deleted) ----------
+
+const ARCHIVABLE = ["task", "post", "qr", "keyDate", "performance"] as const;
+type Archivable = (typeof ARCHIVABLE)[number];
+
+export async function setArchivedAction(formData: FormData) {
+  const entity = ARCHIVABLE.find((e) => e === str(formData, "entity")) as Archivable | undefined;
+  const id = str(formData, "id") ?? "";
+  const archived = str(formData, "archived") === "true";
+  const back = str(formData, "back");
+  // Only ever bounce to an internal path.
+  const path = back && /^\/[a-zA-Z0-9\-_/?=&]*$/.test(back) ? back : "/";
+  await attempt(path, async () => {
+    switch (entity) {
+      case "task":
+        await updateTask(id, taskUpdateSchema.parse({ archived }), "web");
+        break;
+      case "post":
+        await updatePost(id, postUpdateSchema.parse({ archived }), "web");
+        break;
+      case "qr":
+        await updateQrLink(id, qrUpdateSchema.parse({ archived }), "web");
+        break;
+      case "keyDate":
+        await updateKeyDate(id, keyDateUpdateSchema.parse({ archived }), "web");
+        break;
+      case "performance":
+        await updatePerformance(id, performanceUpdateSchema.parse({ archived }), "web");
+        break;
+      default:
+        throw new Error("Unknown item type");
+    }
+  });
+  refresh();
+  redirect(path);
 }
 
 // ---------- tasks ----------
@@ -115,12 +166,6 @@ export async function shiftTaskAction(formData: FormData) {
   refresh();
 }
 
-export async function archiveTaskAction(formData: FormData) {
-  await attempt("/tasks", () => archiveTask(str(formData, "id") ?? "", "web"));
-  refresh();
-  redirect("/tasks");
-}
-
 // ---------- posts ----------
 
 function postFields(formData: FormData) {
@@ -150,12 +195,6 @@ export async function savePostAction(formData: FormData) {
   redirect("/posts");
 }
 
-export async function archivePostAction(formData: FormData) {
-  await attempt("/posts", () => archivePost(str(formData, "id") ?? "", "web"));
-  refresh();
-  redirect("/posts");
-}
-
 // ---------- QR ----------
 
 export async function createQrAction(formData: FormData) {
@@ -174,13 +213,19 @@ export async function createQrAction(formData: FormData) {
   redirect("/qr");
 }
 
+/** Every field except the slug, which is printed and therefore read-only. */
 export async function updateQrAction(formData: FormData) {
   await attempt("/qr", async () => {
     await updateQrLink(
       str(formData, "id") ?? "",
       qrUpdateSchema.parse({
         label: str(formData, "label"),
+        placementType: str(formData, "placementType"),
         destinationUrl: str(formData, "destinationUrl"),
+        utmSource: strictStr(formData, "utmSource"),
+        utmMedium: strictStr(formData, "utmMedium"),
+        utmCampaign: strictStr(formData, "utmCampaign"),
+        utmContent: strictStr(formData, "utmContent"),
         notes: strictStr(formData, "notes"),
         isActive: formData.get("isActive") === "on",
       }),
@@ -189,4 +234,55 @@ export async function updateQrAction(formData: FormData) {
   });
   refresh();
   redirect("/qr");
+}
+
+// ---------- show ----------
+
+export async function updateShowSettingsAction(formData: FormData) {
+  await attempt("/show", async () => {
+    await updateShowSettings(
+      showSettingsUpdateSchema.parse({
+        name: str(formData, "name"),
+        utmCampaign: str(formData, "utmCampaign"),
+        defaultDestinationUrl: str(formData, "defaultDestinationUrl"),
+      }),
+      "web",
+    );
+  });
+  refresh();
+  redirect("/show");
+}
+
+export async function saveKeyDateAction(formData: FormData) {
+  const id = str(formData, "id");
+  await attempt("/show", async () => {
+    const fields = {
+      label: str(formData, "label"),
+      date: str(formData, "date"),
+      endDate: str(formData, "endDate") ?? null,
+      kind: str(formData, "kind"),
+      isProposed: formData.get("isProposed") === "on",
+      notes: strictStr(formData, "notes"),
+    };
+    if (id) await updateKeyDate(id, keyDateUpdateSchema.parse(fields), "web");
+    else await createKeyDate(keyDateCreateSchema.parse(fields), "web");
+  });
+  refresh();
+  redirect("/show");
+}
+
+export async function savePerformanceAction(formData: FormData) {
+  const id = str(formData, "id");
+  await attempt("/show", async () => {
+    const when = str(formData, "startsAt");
+    const fields = {
+      startsAt: when ? londonWallClockToDate(when).toISOString() : undefined,
+      label: str(formData, "label") ?? null,
+      notes: strictStr(formData, "notes"),
+    };
+    if (id) await updatePerformance(id, performanceUpdateSchema.parse(fields), "web");
+    else await createPerformance(performanceCreateSchema.parse(fields), "web");
+  });
+  refresh();
+  redirect("/show");
 }

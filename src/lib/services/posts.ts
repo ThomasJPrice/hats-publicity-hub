@@ -5,6 +5,7 @@ import { posts, type Post } from "@/lib/db/schema";
 import { instantRange, type DateRange } from "@/lib/dates";
 import type { PostCreate, PostUpdate } from "@/lib/schemas";
 import { logActivity } from "./activity";
+import { archivePatch, changeSummary } from "./archive";
 
 export type PostFilters = {
   /** Inclusive London calendar dates. */
@@ -12,10 +13,11 @@ export type PostFilters = {
   to?: string;
   status?: PostStatus;
   channel?: Channel;
+  includeArchived?: boolean;
 };
 
 export async function listPosts(filters: PostFilters = {}): Promise<Post[]> {
-  const where: SQL[] = [isNull(posts.archivedAt)];
+  const where: SQL[] = filters.includeArchived ? [] : [isNull(posts.archivedAt)];
   if (filters.from) where.push(gte(posts.scheduledFor, instantRange({ start: filters.from, end: filters.from }).from));
   if (filters.to) where.push(lt(posts.scheduledFor, instantRange({ start: filters.to, end: filters.to }).to));
   if (filters.status) where.push(eq(posts.status, filters.status));
@@ -27,7 +29,7 @@ export async function listPosts(filters: PostFilters = {}): Promise<Post[]> {
     .orderBy(sql`${posts.scheduledFor} asc nulls last`, asc(posts.title));
 }
 
-export async function listPostsInRange(range: DateRange, filters: Pick<PostFilters, "status" | "channel"> = {}) {
+export async function listPostsInRange(range: DateRange, filters: Pick<PostFilters, "status" | "channel" | "includeArchived"> = {}) {
   return listPosts({ from: range.start, to: range.end, ...filters });
 }
 
@@ -56,16 +58,11 @@ export async function createPost(input: PostCreate, source: Source): Promise<Pos
 }
 
 export async function updatePost(id: string, input: PostUpdate, source: Source): Promise<Post> {
-  const { scheduledFor, ...rest } = input;
-  const patch: Partial<typeof posts.$inferInsert> = { ...rest };
+  const { scheduledFor, archived, ...rest } = input;
+  const patch: Partial<typeof posts.$inferInsert> = { ...rest, ...archivePatch(archived) };
   if (scheduledFor !== undefined) patch.scheduledFor = scheduledFor ? new Date(scheduledFor) : null;
   const [row] = await db().update(posts).set(patch).where(eq(posts.id, id)).returning();
   if (!row) throw new Error(`Post ${id} not found`);
-  await logActivity(source, "post", id, `Updated post: ${row.title} (${Object.keys(input).join(", ")})`);
+  await logActivity(source, "post", id, changeSummary("Updated", "post", row.title, input));
   return row;
-}
-
-export async function archivePost(id: string, source: Source): Promise<void> {
-  const [row] = await db().update(posts).set({ archivedAt: new Date() }).where(eq(posts.id, id)).returning();
-  if (row) await logActivity(source, "post", id, `Archived post: ${row.title}`);
 }

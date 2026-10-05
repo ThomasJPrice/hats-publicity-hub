@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { archivePostAction } from "@/app/actions";
+import { ArchiveButton } from "@/components/archive-button";
 import { CopyButton } from "@/components/copy-button";
 import { PostForm } from "@/components/post-form";
 import { ErrorNote } from "@/components/ui";
@@ -18,7 +18,8 @@ export default async function EditPostPage({
   const { id } = await params;
   const { error } = await searchParams;
   const post = UUID.test(id) ? await getPost(id) : null;
-  if (!post || post.archivedAt) notFound();
+  if (!post) notFound();
+  const archived = post.archivedAt !== null;
 
   return (
     <div>
@@ -27,12 +28,16 @@ export default async function EditPostPage({
         <h1 className="text-lg font-semibold">Edit post</h1>
         <CopyButton text={post.caption} />
       </div>
+      {archived && (
+        <p className="mb-3 rounded-lg border border-stone-300 bg-stone-100 px-3 py-2 text-sm text-stone-700">
+          This post is archived. Restore it to see it in the lists and calendar again.
+        </p>
+      )}
       <ErrorNote message={error} />
       <PostForm post={post} />
-      <form action={archivePostAction} className="mt-3">
-        <input type="hidden" name="id" value={post.id} />
-        <button className="btn">Archive</button>
-      </form>
+      <div className="mt-3">
+        <ArchiveButton entity="post" id={post.id} archived={archived} back={archived ? `/posts/${post.id}` : "/posts"} className="btn" />
+      </div>
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { tasks, type Task } from "@/lib/db/schema";
 import { addDays, londonToday, weekRange } from "@/lib/dates";
 import type { TaskCreate, TaskUpdate } from "@/lib/schemas";
 import { logActivity } from "./activity";
+import { archivePatch, changeSummary } from "./archive";
 
 export type TaskFilters = {
   /** A single status, or "open" for everything not done. */
@@ -15,10 +16,11 @@ export type TaskFilters = {
   overdue?: boolean;
   thisWeek?: boolean;
   nextWeek?: boolean;
+  includeArchived?: boolean;
 };
 
 export async function listTasks(filters: TaskFilters = {}, today = londonToday()): Promise<Task[]> {
-  const where: SQL[] = [isNull(tasks.archivedAt)];
+  const where: SQL[] = filters.includeArchived ? [] : [isNull(tasks.archivedAt)];
   if (filters.status === "open") where.push(ne(tasks.status, "done"));
   else if (filters.status) where.push(eq(tasks.status, filters.status));
   if (filters.category) where.push(eq(tasks.category, filters.category));
@@ -71,12 +73,13 @@ export async function createTask(input: TaskCreate, source: Source): Promise<Tas
 export async function updateTask(id: string, input: TaskUpdate, source: Source): Promise<Task> {
   const existing = await getTask(id);
   if (!existing) throw new Error(`Task ${id} not found`);
-  const patch: Partial<typeof tasks.$inferInsert> = { ...input };
+  const { archived, ...fields } = input;
+  const patch: Partial<typeof tasks.$inferInsert> = { ...fields, ...archivePatch(archived) };
   if (input.status && input.status !== existing.status) {
     patch.completedAt = input.status === "done" ? new Date() : null;
   }
   const [row] = await db().update(tasks).set(patch).where(eq(tasks.id, id)).returning();
-  await logActivity(source, "task", id, `Updated task: ${row.title} (${Object.keys(input).join(", ")})`);
+  await logActivity(source, "task", id, changeSummary("Updated", "task", row.title, input));
   return row;
 }
 
@@ -102,9 +105,4 @@ export async function shiftTask(id: string, days: number, source: Source, today 
   const [row] = await db().update(tasks).set({ dueDate }).where(eq(tasks.id, id)).returning();
   await logActivity(source, "task", id, `Moved task to ${dueDate}: ${row.title}`);
   return row;
-}
-
-export async function archiveTask(id: string, source: Source): Promise<void> {
-  const [row] = await db().update(tasks).set({ archivedAt: new Date() }).where(eq(tasks.id, id)).returning();
-  if (row) await logActivity(source, "task", id, `Archived task: ${row.title}`);
 }

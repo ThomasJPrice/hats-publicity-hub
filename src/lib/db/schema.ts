@@ -3,6 +3,7 @@ import { boolean, date, index, pgTable, text, timestamp, uuid } from "drizzle-or
 import type {
   Channel,
   DeviceClass,
+  KeyDateKind,
   PlacementType,
   Pillar,
   PostStatus,
@@ -20,6 +21,44 @@ const stamps = {
     .defaultNow()
     .$onUpdate(() => new Date()),
 };
+
+/** A single row: the show-level settings. */
+export const showSettings = pgTable("show_settings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  utmCampaign: text("utm_campaign").notNull(),
+  defaultDestinationUrl: text("default_destination_url").notNull(),
+  ...stamps,
+});
+
+export const keyDates = pgTable(
+  "key_dates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    label: text("label").notNull(),
+    date: date("date").notNull(),
+    endDate: date("end_date"),
+    kind: text("kind").$type<KeyDateKind>().notNull().default("other"),
+    isProposed: boolean("is_proposed").notNull().default(false),
+    notes: text("notes").notNull().default(""),
+    archivedAt: tz("archived_at"),
+    ...stamps,
+  },
+  (t) => [index("key_dates_date_idx").on(t.date)],
+);
+
+export const performances = pgTable(
+  "performances",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    startsAt: tz("starts_at").notNull(),
+    label: text("label"),
+    notes: text("notes").notNull().default(""),
+    archivedAt: tz("archived_at"),
+    ...stamps,
+  },
+  (t) => [index("performances_starts_idx").on(t.startsAt)],
+);
 
 export const tasks = pgTable(
   "tasks",
@@ -74,6 +113,7 @@ export const qrLinks = pgTable("qr_links", {
   utmContent: text("utm_content").notNull().default(""),
   isActive: boolean("is_active").notNull().default(true),
   notes: text("notes").notNull().default(""),
+  archivedAt: tz("archived_at"),
   ...stamps,
 });
 
@@ -101,6 +141,9 @@ export const activityLog = pgTable("activity_log", {
   summary: text("summary").notNull(),
 });
 
+export type ShowSettings = typeof showSettings.$inferSelect;
+export type KeyDate = typeof keyDates.$inferSelect;
+export type Performance = typeof performances.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
 export type Post = typeof posts.$inferSelect;
 export type QrLink = typeof qrLinks.$inferSelect;
